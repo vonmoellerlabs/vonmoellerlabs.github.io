@@ -178,11 +178,12 @@ const persist=()=>{try{localStorage.setItem('kiezhopper',JSON.stringify(save))}c
 
 /* ---------- canvas ---------- */
 const cv=document.getElementById('game'),ctx=cv.getContext('2d');
-let W=0,H=0,T=40,ox=0,baseY=0,dpr=1;
+let W=0,H=0,T=40,ox=0,baseY=0,dpr=1,camX=4;
+function updateOx(){const half=W/T/2;let cx=(COLS-1)/2;if(half*2<COLS)cx=Math.max(half-.5,Math.min(COLS-half-.5,camX));ox=W/2-(cx+.5)*T}
 function resize(){
   dpr=Math.min(2,window.devicePixelRatio||1);W=innerWidth;H=innerHeight;
   cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
-  T=Math.min(W/COLS,H/10.5);ox=W/2-COLS*T/2;baseY=H-T*3.3;
+  T=Math.min(W/6.6,H/9.2);baseY=H-T*3.3;updateOx();
 }
 addEventListener('resize',resize);resize();
 const colX=c=>ox+c*T;
@@ -197,44 +198,54 @@ function shadow(x,y,w,d){ctx.fillStyle='rgba(0,0,0,.18)';ctx.fillRect(x+T*.07,y+
 function grid(x,y,w,h,cols,rows,color){ctx.fillStyle=color;const cw=w/cols,rh=h/rows;
   for(let i=0;i<cols;i++)for(let j=0;j<rows;j++)ctx.fillRect(x+i*cw+cw*.22,y+j*rh+rh*.22,cw*.56,rh*.5)}
 const themeOf=r=>THEMES[((Math.floor(Math.max(0,r)/STATION_EVERY))%THEMES.length+THEMES.length)%THEMES.length];
-const diffOf=r=>1+Math.max(0,r)/260;
+const lvlOf=r=>Math.floor(Math.max(0,r)/STATION_EVERY);
+const diffOf=r=>{const l=lvlOf(r);return 1+Math.min(l,8)*.11+Math.max(0,l-8)*.02};
 
 /* ---------- lanes ---------- */
 let lanes={};
 function pick(w){const e=Object.entries(w).filter(([,v])=>v>0);let s=e.reduce((a,[,v])=>a+v,0)*rnd();for(const [k,v] of e){if((s-=v)<=0)return k}return e[0][0]}
 function makeLane(r){
-  const th=themeOf(r),L={r,th,obst:new Set(),coin:-1,items:[]};
+  const th=themeOf(r),L={r,th,obst:new Set(),coin:-1,items:[],run:0,waterRun:0,safe:4};
   if(r<0){L.type='grass';for(let c=0;c<COLS;c++)L.obst.add(c);L.kinds={};for(let c=0;c<COLS;c++)L.kinds[c]=rnd()<.6?'tree':'bush';return L}
-  if(r%STATION_EVERY===0){L.type='station';[0,1,2,6,7,8].forEach(c=>L.obst.add(c));return L}
-  const m=r%STATION_EVERY;
+  const prev=lanes[r-1],prevSafe=prev?prev.safe:4,m=r%STATION_EVERY,lvl=lvlOf(r),d=diffOf(r);
+  if(m===0){L.type='station';[0,1,2,6,7,8].forEach(c=>L.obst.add(c));return L}
+  // a guaranteed free path drifts across the field and is pulled to the station gate before each station
+  let safe=prevSafe;
+  if(m>=STATION_EVERY-6)safe+=Math.sign(4-safe);else safe=Math.max(0,Math.min(COLS-1,safe+Math.floor(rnd()*3)-1));
+  L.safe=safe;
   let type;
   if(m<=2||m===STATION_EVERY-1)type='grass';
   else{
-    type=pick(th.w);
-    const prev=lanes[r-1],prev2=lanes[r-2];
-    if(type==='water'&&prev&&prev.type==='water'&&prev2&&prev2.type==='water')type='grass';
+    const w=Object.assign({},th.w);w.grass=Math.max(1.6,w.grass-lvl*.25);w.road*=1+lvl*.08;w.rail*=1+lvl*.1;w.tram*=1+lvl*.1;
+    type=pick(w);
+    const maxRun=Math.min(2+Math.floor(lvl/2),5);
+    if(type!=='grass'&&prev&&prev.run>=maxRun)type='grass';
+    if(type==='water'&&prev&&prev.waterRun>=2)type='grass';
     if((type==='rail'||type==='tram')&&prev&&prev.type===type)type='road';
   }
-  L.type=type;const d=diffOf(r);
+  L.type=type;L.run=type==='grass'?0:(prev?prev.run:0)+1;
+  L.waterRun=type==='water'?((prev&&prev.type==='water')?prev.waterRun+1:1):0;
   if(type==='grass'){
-    const n=Math.floor(rnd()*(r<8?2:4));L.kinds={};
-    for(let i=0;i<n;i++){const c=Math.floor(rnd()*COLS);if(r<4&&c>=3&&c<=5)continue;L.obst.add(c);L.kinds[c]=th.obst[Math.floor(rnd()*th.obst.length)]}
-    if(L.obst.size>=COLS-1)L.obst.clear();
+    L.kinds={};const keep=new Set();
+    for(let c=Math.min(prevSafe,safe);c<=Math.max(prevSafe,safe);c++)keep.add(c);
+    if(r<4){keep.add(3);keep.add(4);keep.add(5)}
+    const n=r<8?Math.floor(rnd()*2):Math.floor(rnd()*(Math.min(2+lvl,6)+1));
+    for(let i=0;i<n;i++){const c=Math.floor(rnd()*COLS);if(keep.has(c))continue;L.obst.add(c);L.kinds[c]=th.obst[Math.floor(rnd()*th.obst.length)]}
   }else if(type==='road'){
-    L.dir=rnd()<.5?1:-1;L.speed=(1.1+rnd()*1.8)*d;
-    let x=-6;const span=COLS+12;
+    L.dir=rnd()<.5?1:-1;L.speed=(1.1+rnd()*1.5)*d;
+    const minGap=Math.max(2,L.speed*.5),span=COLS+12;let x=-6;
     while(true){const bus=rnd()<.16,taxi=!bus&&rnd()<.22,w=bus?2.5:1.15;
-      if(x+w>-6+span-2)break;
+      if(x+w>-6+span-minGap)break;
       L.items.push({x,w,kind:bus?'bus':taxi?'taxi':'car',color:CAR_COLORS[Math.floor(rnd()*CAR_COLORS.length)]});
-      x+=w+2.2+rnd()*3.2/Math.sqrt(d)}
+      x+=w+minGap+rnd()*Math.max(.8,3.4-lvl*.3)}
   }else if(type==='water'){
-    L.dir=(lanes[r-1]&&lanes[r-1].type==='water')?-lanes[r-1].dir:(rnd()<.5?1:-1);
-    L.speed=(0.7+rnd()*.9)*Math.sqrt(d);
-    let x=-6;const span=COLS+12;
-    while(true){const w=2+Math.floor(rnd()*2.5);if(x+w>-6+span-1.4)break;L.items.push({x,w,kind:'raft'});x+=w+1.3+rnd()*1.6}
+    L.dir=(prev&&prev.type==='water')?-prev.dir:(rnd()<.5?1:-1);
+    L.speed=(.7+rnd()*.8)*Math.sqrt(d);
+    const span=COLS+12;let x=-6;
+    while(true){const w=2+Math.floor(rnd()*2);if(x+w>-6+span-1.2)break;L.items.push({x,w,kind:'raft'});x+=w+1.1+rnd()*Math.max(.6,1.4-lvl*.1)}
   }else{
     L.dir=rnd()<.5?1:-1;
-    L.train=type==='rail'?{st:'idle',t:1+rnd()*3,x:0,w:13,speed:24}:{st:'idle',t:1+rnd()*3,x:0,w:5.5,speed:8*Math.sqrt(d)};
+    L.train=type==='rail'?{st:'idle',t:1+rnd()*3,x:0,w:13,speed:24}:{st:'idle',t:1+rnd()*3,x:0,w:5.5,speed:Math.min(13,8*Math.sqrt(d))};
   }
   if(type==='grass'||type==='road'){if(rnd()<.22){const c=Math.floor(rnd()*COLS);if(!L.obst.has(c))L.coin=c}}
   return L;
@@ -248,24 +259,24 @@ function updateLanes(dt){
     if(L.train){const t=L.train;
       if(t.st==='idle'){t.t-=dt;if(t.t<=0){t.st='warn';t.t=L.type==='rail'?1:0.8}}
       else if(t.st==='warn'){t.t-=dt;if(t.t<=0){t.st='go';t.x=L.dir>0?-6-t.w:COLS+6}}
-      else{t.x+=L.dir*t.speed*dt;if((L.dir>0&&t.x>COLS+6)||(L.dir<0&&t.x+t.w<-6)){t.st='idle';t.t=1.5+rnd()*3.5}}}
+      else{t.x+=L.dir*t.speed*dt;if((L.dir>0&&t.x>COLS+6)||(L.dir<0&&t.x+t.w<-6)){t.st='idle';t.t=Math.max(1,(1.5+rnd()*3.5)/(1+lvlOf(L.r)*.12))}}}
   }
   for(const k in lanes)if(+k<lo-10)delete lanes[k];
 }
 
 /* ---------- state ---------- */
 let state='menu',cam=0,camMin=0,started=false,score=0,runCoins=0,deadT=0,reason='',deathKind='';
-const P={x:4,y:0,fx:4,fy:0,tx:4,ty:0,t:1,moving:false,log:null,queue:null,dir:0};
+const P={x:4,y:0,fx:4,fy:0,tx:4,ty:0,t:1,moving:false,log:null,queue:[],dir:0,landT:0};
 function reset(){
   seed=(Date.now()%2147483646)+1;lanes={};parts=[];pop=null;shakeT=0;flashT=0;slowT=0;cam=0;camMin=-2;started=false;score=0;runCoins=0;deathKind='';
-  Object.assign(P,{x:4,y:0,fx:4,fy:0,tx:4,ty:0,t:1,moving:false,log:null,queue:null,dir:0});
+  Object.assign(P,{x:4,y:0,fx:4,fy:0,tx:4,ty:0,t:1,moving:false,log:null,queue:[],dir:0,landT:0});
   updateHud(true);
 }
 
 /* ---------- input ---------- */
 function tryMove(dx,dy){
   if(state!=='play')return;
-  if(P.moving){P.queue=[dx,dy];return}
+  if(P.moving){if(P.queue.length<2)P.queue.push([dx,dy]);return}
   const tx=Math.round(P.x)+dx,ty=P.y+dy;
   if(tx<0||tx>=COLS)return;
   if(lane(ty).obst.has(tx)){P.dir=dx;return}
@@ -279,9 +290,11 @@ addEventListener('keydown',e=>{
   if(m){e.preventDefault();if(!e.repeat)tryMove(m[0],m[1])}
 });
 let ts=null;
-cv.addEventListener('pointerdown',e=>{ts={x:e.clientX,y:e.clientY}});
-cv.addEventListener('pointerup',e=>{if(!ts)return;const dx=e.clientX-ts.x,dy=e.clientY-ts.y;ts=null;
-  if(Math.hypot(dx,dy)<22)tryMove(0,1);else if(Math.abs(dx)>Math.abs(dy))tryMove(dx>0?1:-1,0);else tryMove(0,dy<0?1:-1)});
+cv.addEventListener('pointerdown',e=>{audio();ts={x:e.clientX,y:e.clientY,f:false};try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+cv.addEventListener('pointermove',e=>{if(!ts||ts.f)return;const dx=e.clientX-ts.x,dy=e.clientY-ts.y;if(Math.hypot(dx,dy)<24)return;ts.f=true;
+  if(Math.abs(dx)>Math.abs(dy))tryMove(dx>0?1:-1,0);else tryMove(0,dy<0?1:-1)});
+cv.addEventListener('pointerup',()=>{if(!ts)return;if(!ts.f)tryMove(0,1);ts=null});
+cv.addEventListener('pointercancel',()=>{ts=null});
 
 /* ---------- game logic ---------- */
 /* ---------- death juice ---------- */
@@ -341,9 +354,9 @@ function land(){
   if(L.type==='water'){const c=P.x+.5;const log=L.items.find(it=>c>=it.x&&c<=it.x+it.w);if(log)P.log=log;else{die('water');return}}
   if(L.coin===Math.round(P.x)){L.coin=-1;runCoins++;save.coins++;persist()}
   if(P.y>score){const prev=score;score=P.y;
-    if(score%STATION_EVERY===0&&score>0)showBanner(themeOf(score).name,'Nächster Halt erreicht');}
+    if(score%STATION_EVERY===0&&score>0)showBanner(themeOf(score).name,'Level '+(lvlOf(score)+1)+' · etwas schneller');}
   updateHud();
-  if(P.queue){const q=P.queue;P.queue=null;tryMove(q[0],q[1])}
+  P.landT=.09;if(P.queue.length){const q=P.queue.shift();tryMove(q[0],q[1])}
 }
 function update(dt){
   let ws=1;
@@ -351,14 +364,16 @@ function update(dt){
   shakeT=Math.max(0,shakeT-dt);flashT=Math.max(0,flashT-dt*6);
   updateParts(dt*(slowT>0?.5:1));
   updateLanes(dt*ws);
+  P.landT=Math.max(0,P.landT-dt);
+  {const pxNow=state==='menu'?4:(P.moving?P.fx+(P.tx-P.fx)*P.t:P.x);camX+=(pxNow-camX)*(1-Math.exp(-dt*9))}
   if(state==='play'){
     if(P.moving){P.t+=dt/0.11;if(P.t>=1)land()}
     if(state==='play'&&P.log&&!P.moving){const L=lane(P.y);P.x+=L.dir*L.speed*dt;if(P.x+.5<0||P.x+.5>COLS)die('water')}
     const ry=P.moving?P.fy+(P.ty-P.fy)*P.t:P.y;
     // camera
-    if(started){camMin+=(0.32+score/320)*dt}
+    if(started){camMin+=Math.min(.8,.3+lvlOf(score)*.07)*dt}
     camMin=Math.max(camMin,cam-1.6);
-    const target=Math.max(ry,camMin);cam+=(target-cam)*Math.min(1,dt*5);
+    const target=Math.max(ry,camMin);cam+=(target-cam)*(1-Math.exp(-dt*8));
     if(ry<cam-3.1)die('ctrl');
     // collisions
     if(state==='play'){
@@ -471,11 +486,12 @@ const LANDMARKS={
 };
 function drawPlayer(top){
   const sk=SKINS.find(s=>s.id===save.skin)||SKINS[0];
-  const px=P.moving?P.fx+(P.tx-P.fx)*P.t:P.x;
+  const ez=1-(1-P.t)*(1-P.t),px=P.moving?P.fx+(P.tx-P.fx)*ez:P.x;
   const hop=P.moving?Math.sin(Math.PI*P.t)*T*.35:0;
   if(state==='dead'&&deathKind==='water'){const cx=colX(px)+T*.5,cy=top+T*.55,rr=T*(.2+deadT*.6);
     ctx.strokeStyle=`rgba(255,255,255,${Math.max(0,.8-deadT)})`;ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(cx,cy,rr,rr*.4,0,0,Math.PI*2);ctx.stroke();return}
   let squash=1,wf=1,jx=0;
+  if(state==='play'&&P.landT>0){const k=P.landT/.09;squash=1-.2*k;wf=1+.14*k}
   if(state==='dead'&&deathKind!=='ctrl'){const p=Math.min(1,deadT/.12),e=1-Math.pow(1-p,3);
     const wob=deadT>.12?Math.sin((deadT-.12)*22)*Math.exp(-(deadT-.12)*7)*.12:0;squash=1-.84*e+wob;wf=1+.55*e-wob}
   if(state==='dead'&&deathKind==='ctrl')jx=Math.sin(deadT*60)*T*.04*Math.max(0,1-deadT*2);
@@ -492,7 +508,7 @@ function drawPlayer(top){
 }
 let now=0;
 function draw(){
-  ctx.fillStyle='#0E1322';ctx.fillRect(0,0,W,H);
+  updateOx();ctx.fillStyle='#0E1322';ctx.fillRect(0,0,W,H);
   ctx.save();
   if(shakeT>0){const m=T*.12*(shakeT/.28);ctx.translate((Math.random()-.5)*m,(Math.random()-.5)*m)}
   const rMin=Math.floor(cam-(H-baseY)/T)-1,rMax=Math.ceil(cam+baseY/T)+5;
@@ -534,7 +550,7 @@ function showOver(){
   $('oStation').textContent=`Zuletzt erreicht: U ${themeOf(score).name}`;over.hidden=false;hud.hidden=true;
 }
 function refreshMenu(){$('mBest').textContent=save.best;$('mCoins').textContent=save.coins}
-function start(){audio();reset();state='play';menu.hidden=true;over.hidden=true;shop.hidden=true;hud.hidden=false;showBanner(THEMES[0].name,'Abfahrt');cv.focus&&cv.focus()}
+function start(){audio();reset();camX=4;state='play';menu.hidden=true;over.hidden=true;shop.hidden=true;hud.hidden=false;showBanner(THEMES[0].name,'Abfahrt');cv.focus&&cv.focus()}
 $('play').onclick=start;$('again').onclick=start;
 $('toMenu').onclick=()=>{over.hidden=true;state='menu';refreshMenu();menu.hidden=false};
 $('openShop').onclick=()=>{renderShop();menu.hidden=true;shop.hidden=false};
