@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meine Hörzeit – von Möller Labs</title>
+<meta name="description" content="Lade deinen Streaming-Verlauf hoch und bekomme eine Auswertung deiner Hörgewohnheiten – direkt im Browser, ohne Upload auf einen Server.">
+<meta name="theme-color" content="#14111f">
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f6f4fb; --surface:#ffffff; --surface-2:#efecf7; --text:#1b1726; --muted:#655f78;
+  --line:#e2ddef; --accent:#4B3FD1; --accent-2:#ff5c7a; --accent-soft:#ebe4ff; --ok:#13a36b;
+  --shadow:0 1px 2px rgba(20,17,31,.06),0 8px 24px rgba(20,17,31,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14111f; --surface:#1d1930; --surface-2:#262140; --text:#f1eefb; --muted:#a59fbd;
+    --line:#332d4f; --accent:#9C93FF; --accent-2:#ff7590; --accent-soft:#2c2450; --ok:#3ccf95;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14111f; --surface:#1d1930; --surface-2:#262140; --text:#f1eefb; --muted:#a59fbd;
+  --line:#332d4f; --accent:#9C93FF; --accent-2:#ff7590; --accent-soft:#2c2450; --ok:#3ccf95;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;line-height:1.15;margin:0}
+a{color:var(--accent)}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px}
+header.hero{padding:56px 0 32px;text-align:left}
+.brand{text-decoration:none;display:inline-flex;align-items:center;gap:10px;font-weight:600;color:var(--muted);font-size:14px;letter-spacing:.02em}
+.brand-dot{width:12px;height:12px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+.hero h1{font-size:clamp(36px,7vw,64px);margin:14px 0 14px;letter-spacing:-.02em}
+.hero h1 span{background:linear-gradient(90deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{font-size:18px;color:var(--muted);max-width:620px;margin:0}
+.privacy{display:flex;gap:10px;align-items:flex-start;margin-top:22px;padding:12px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--line);max-width:620px;font-size:14px;color:var(--muted)}
+.privacy b{color:var(--text)}
+section{margin:28px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:var(--shadow)}
+.step-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.step-num{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--accent-soft);color:var(--accent)}
+.step-head h2{font-size:24px}
+ol.guide{margin:0 0 20px;padding-left:22px}
+ol.guide li{margin:8px 0}
+ol.guide li::marker{color:var(--accent);font-weight:600}
+.hint{font-size:14px;color:var(--muted)}
+.btn{appearance:none;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 16px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;padding:14px 22px;border-radius:999px;text-decoration:none;transition:transform .1s ease,filter .15s ease}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff}
+.btn-primary:hover{filter:brightness(1.07)}
+.btn-ghost{background:var(--surface-2);color:var(--text)}
+.btn-ghost:hover{filter:brightness(.97)}
+.btn svg{width:18px;height:18px}
+.btn-row{display:flex;flex-wrap:wrap;gap:10px}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:36px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop strong{display:block;font-size:18px;margin-bottom:4px}
+.drop input{display:none}
+.status{margin-top:14px;font-size:14px;min-height:20px}
+.status.err{color:var(--accent-2)}
+.status.ok{color:var(--ok)}
+#results{display:none}
+.res-head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+.res-head h2{font-size:32px}
+.res-head .sub{color:var(--muted);font-size:14px;margin-top:4px}
+select{font:500 15px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.kpi .v{font-size:28px;font-weight:700;letter-spacing:-.01em}
+.kpi .l{font-size:13px;color:var(--muted)}
+.persona{display:flex;gap:16px;align-items:center;background:linear-gradient(120deg,var(--accent),var(--accent-2));color:#fff;border-radius:20px;padding:20px 22px;margin-bottom:16px}
+.persona .emoji{font-size:40px;line-height:1}
+.persona h3{font-size:22px}
+.persona p{margin:2px 0 0;opacity:.9;font-size:15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.card h3{font-size:18px;margin-bottom:12px}
+ol.top{list-style:none;margin:0;padding:0;counter-reset:t}
+ol.top li{counter-increment:t;display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+ol.top li:last-child{border-bottom:0}
+ol.top li::before{content:counter(t);font-weight:700;color:var(--accent);text-align:right}
+.top .name{min-width:0}
+.top .name b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .name small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .bar{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent-2));margin-top:5px}
+.top .val{font-size:13px;color:var(--muted);text-align:right;white-space:nowrap}
+canvas.chart{width:100%;height:200px;display:block}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.fact{padding:14px;border-radius:14px;background:var(--surface-2)}
+.fact .l{font-size:13px;color:var(--muted)}
+.fact .v{font-weight:600;margin-top:2px}
+.share{display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:center}
+@media (max-width:640px){.share{grid-template-columns:1fr}.share img{max-width:220px;margin:0 auto}}
+.share img{width:100%;border-radius:16px;display:block;box-shadow:var(--shadow);border:1px solid var(--line)}
+.share h3{font-size:22px;margin-bottom:6px}
+.share p{color:var(--muted);margin:0 0 16px}
+#shareHint{margin-top:12px}
+footer{padding:40px 0 56px;color:var(--muted);font-size:13px}
+footer nav{display:flex;gap:16px;margin-bottom:8px}
+footer a{color:var(--muted)}
+.overlay{position:fixed;inset:0;background:rgba(10,8,18,.55);display:none;place-items:center;z-index:10;color:#fff;font-weight:600}
+.overlay.on{display:grid}
+.spinner{width:42px;height:42px;border-radius:50%;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin 1s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="hero">
+    <a class="brand" href="../index.html"><span class="brand-dot"></span>von Möller Labs</a>
+    <h1>Meine <span>Hörzeit</span></h1>
+    <p>Hol dir deinen kompletten Spotify-Streaming-Verlauf, lade ihn hier hoch und sieh, was du wirklich hörst – mit PDF-Export und fertigem Bild für deine Instagram Story.</p>
+    <div class="privacy">🔒 <span><b>Deine Daten bleiben bei dir.</b> Die Auswertung läuft komplett in deinem Browser. Die Datei wird nicht an einen Server gesendet und nicht gespeichert.</span></div>
+  </header>
+
+  <!-- Schritt 1 -->
+  <section class="card" id="step1">
+    <div class="step-head"><div class="step-num">1</div><h2>Daten bei Spotify anfordern</h2></div>
+    <ol class="guide">
+      <li>Tippe unten auf den Button. Du landest in deinen Spotify-Datenschutzeinstellungen (ggf. einloggen – am besten im Browser, nicht in der App).</li>
+      <li>Scrolle zum Bereich zum Herunterladen deiner Daten und setze den Haken bei <b>„Erweiterter Streaming-Verlauf“</b>. Nur damit bekommst du deine Hörhistorie seit Beginn deines Kontos.</li>
+      <li>Klicke auf <b>„Daten anfordern“</b>.</li>
+      <li>Spotify schickt dir sofort eine E-Mail – bestätige die Anfrage über den Link darin.</li>
+      <li>Warten: Spotify gibt <b>bis zu 30 Tage</b> an, oft geht es schneller. Du bekommst dann eine Mail mit einem Download-Link für <b>my_spotify_data.zip</b>.</li>
+    </ol>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="https://www.spotify.com/de/account/privacy/" target="_blank" rel="noopener">
+        Jetzt Daten bei Spotify anfordern
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7M8 7h9v9"/></svg>
+      </a>
+    </div>
+    <p class="hint" style="margin-top:14px">Der Link führt zu spotify.com. Tipp: Speichere dir diese Seite als Lesezeichen, damit du sie wiederfindest, wenn die Mail kommt.</p>
+  </section>
+
+  <!-- Schritt 2 -->
+  <section class="card" id="step2">
+    <div class="step-head"><div class="step-num">2</div><h2>Datei hochladen</h2></div>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".zip,.json,application/zip,application/json" multiple>
+      <strong>ZIP-Datei hier ablegen oder antippen</strong>
+      <span class="hint">my_spotify_data.zip – du musst sie nicht entpacken. Einzelne JSON-Dateien gehen auch.</span>
+    </label>
+    <div class="status" id="status"></div>
+    <p class="hint" style="margin-top:6px">Noch keine Daten? <a href="#" id="demo">Mit Beispieldaten ausprobieren</a></p>
+  </section>
+
+  <!-- Schritt 3 -->
+  <section id="results">
+    <div class="res-head">
+      <div>
+        <h2 id="resTitle">Deine Auswertung</h2>
+        <div class="sub" id="resRange"></div>
+      </div>
+      <select id="yearSel" aria-label="Zeitraum wählen"></select>
+    </div>
+
+    <div class="persona" id="persona"></div>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grid2">
+      <div class="card"><h3>Top-Künstler:innen</h3><ol class="top" id="topArtists"></ol></div>
+      <div class="card"><h3>Top-Songs</h3><ol class="top" id="topTracks"></ol></div>
+    </div>
+
+    <div class="card" style="margin-top:16px"><h3>Wann du hörst – nach Uhrzeit <span class="hint">(Stunden)</span></h3><canvas class="chart" id="chHour"></canvas></div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Nach Wochentag</h3><canvas class="chart" id="chWeek"></canvas></div>
+      <div class="card"><h3 id="chTimeTitle">Nach Monat</h3><canvas class="chart" id="chTime"></canvas></div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Top-Alben</h3><ol class="top" id="topAlbums"></ol></div>
+      <div class="card"><h3>Top-Podcasts</h3><ol class="top" id="topPods"></ol></div>
+    </div>
+
+    <div class="card" style="margin-top:16px"><h3>Fun Facts</h3><div class="facts" id="facts"></div></div>
+
+    <!-- Export & Share -->
+    <div class="card" style="margin-top:16px">
+      <div class="share">
+        <img id="storyPrev" alt="Vorschau deines Instagram-Story-Bildes">
+        <div>
+          <h3>Teilen &amp; exportieren</h3>
+          <p>Poste deine Hörzeit direkt in deine Instagram Story oder speichere die komplette Auswertung als PDF.</p>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btnStory">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>
+              In Instagram Story posten
+            </button>
+            <button class="btn btn-ghost" id="btnPdf">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 21h14"/></svg>
+              Als PDF speichern
+            </button>
+            <button class="btn btn-ghost" id="btnImg">Story-Bild speichern</button>
+          </div>
+          <div class="hint" id="shareHint"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <nav><a href="../index.html">Start</a><a href="../impressum.html">Impressum</a><a href="../datenschutz.html">Datenschutz</a></nav>
+    <div>© von Möller Labs. Diese Seite steht in keiner Verbindung zu Spotify AB. Spotify ist eine Marke der Spotify AB.</div>
+  </footer>
+</div>
+
+<div class="overlay" id="overlay"><div style="text-align:center"><div class="spinner"></div><div id="overlayText">Lese deine Daten …</div></div></div>
+
+<script>
+/* ======================= Einstellungen ======================= */
+const SITE_URL = location.host ? (location.host + location.pathname).replace(/index\.html$/,'').replace(/\/$/,'') : 'hoerzeit';
+const MIN_PLAY_MS = 30000;   // ab 30 Sek. zählt ein Song als "gehört" (wie bei Spotify)
+
+/* ======================= Helfer ======================= */
+const $ = s => document.querySelector(s);
+const nf = new Intl.NumberFormat('de-DE');
+const fmt = n => nf.format(Math.round(n));
+const MONTHS = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+const WEEKDAYS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+const WEEKDAYS_LONG = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dayKey = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const fmtDate = d => d.toLocaleDateString('de-DE',{day:'numeric',month:'long',year:'numeric'});
+function hm(ms){ const m = ms/60000; if (m < 60) return fmt(m)+' Min.'; const h = m/60; return (h<10? h.toFixed(1).replace('.',','): fmt(h))+' Std.'; }
+function setStatus(msg, cls=''){ const s=$('#status'); s.textContent=msg; s.className='status '+cls; }
+function overlay(on, txt){ $('#overlay').classList.toggle('on', on); if (txt) $('#overlayText').textContent = txt; }
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+/* ======================= Daten einlesen ======================= */
+let RECORDS = [];
+
+function normalize(r){
+  // Erweiterter Streaming-Verlauf
+  if ('ts' in r){
+    const t = Date.parse(r.ts); if (isNaN(t)) return null;
+    const ms = +r.ms_played || 0;
+    if (r.master_metadata_track_name){
+      return {t, ms, ext:true, type:'music', track:r.master_metadata_track_name, artist:r.master_metadata_album_artist_name||'Unbekannt',
+        album:r.master_metadata_album_album_name||'', skipped: r.skipped===true || r.reason_end==='fwdbtn', shuffle: r.shuffle===true};
+    }
+    if (r.episode_name || r.episode_show_name){
+      return {t, ms, ext:true, type:'podcast', show:r.episode_show_name||'Podcast', episode:r.episode_name||''};
+    }
+    return null;
+  }
+  // Normale Kontodaten (StreamingHistory_music_X.json / StreamingHistory_podcast_X.json)
+  if ('endTime' in r){
+    const t = Date.parse(String(r.endTime).replace(' ','T')+':00Z'); if (isNaN(t)) return null;
+    const ms = +r.msPlayed || 0;
+    if (r.trackName) return {t, ms, ext:false, type:'music', track:r.trackName, artist:r.artistName||'Unbekannt', album:''};
+    if (r.podcastName || r.episodeName) return {t, ms, ext:false, type:'podcast', show:r.podcastName||'Podcast', episode:r.episodeName||''};
+  }
+  return null;
+}
+
+function isHistoryFile(name){
+  const base = name.split('/').pop();
+  if (/video/i.test(base)) return false;
+  return /^(Streaming_?History|endsong)/i.test(base) && /\.json$/i.test(base);
+}
+
+async function readFiles(files){
+  const raw = [];
+  for (const f of files){
+    if (/\.zip$/i.test(f.name) || f.type.includes('zip')){
+      if (!window.JSZip) throw new Error('ZIP-Modul konnte nicht geladen werden. Bitte Internetverbindung prüfen.');
+      const zip = await JSZip.loadAsync(f);
+      const entries = Object.values(zip.files).filter(e => !e.dir && isHistoryFile(e.name));
+      for (const e of entries){
+        try { const arr = JSON.parse(await e.async('string')); if (Array.isArray(arr)) raw.push(...arr); } catch(_){}
+      }
+    } else if (/\.json$/i.test(f.name)){
+      try { const arr = JSON.parse(await f.text()); if (Array.isArray(arr)) raw.push(...arr); } catch(_){}
+    }
+  }
+  let recs = raw.map(normalize).filter(Boolean);
+  // Wenn der erweiterte Verlauf vorhanden ist, nur diesen nutzen (vermeidet doppelte Zählung)
+  if (recs.some(r => r.ext)) recs = recs.filter(r => r.ext);
+  // Duplikate entfernen (z. B. wenn Dateien doppelt hochgeladen wurden)
+  const seen = new Set();
+  recs = recs.filter(r => { const k = r.t+'|'+(r.track||r.episode)+'|'+r.ms; if (seen.has(k)) return false; seen.add(k); return true; });
+  recs.sort((a,b) => a.t-b.t);
+  return recs;
+}
+
+async function handleFiles(files){
+  if (!files || !files.length) return;
+  overlay(true, 'Lese deine Daten …');
+  try {
+    const recs = await readFiles([...files]);
+    if (!recs.length){
+      overlay(false);
+      setStatus('In der Datei wurde kein Streaming-Verlauf gefunden. Lade bitte die ZIP-Datei von Spotify (my_spotify_data.zip) hoch.', 'err');
+      return;
+    }
+    RECORDS = recs;
+    setStatus('✓ '+fmt(recs.length)+' Einträge eingelesen.', 'ok');
+    showResults();
+  } catch(e){
+    console.error(e);
+    setStatus('Die Datei konnte nicht gelesen werden: '+e.message, 'err');
+  } finally { overlay(false); }
+}
+
+/* ======================= Auswertung ======================= */
+function analyze(year){
+  const recs = year==='all' ? RECORDS : RECORDS.filter(r => new Date(r.t).getFullYear()===+year);
+  const S = {year, totalMs:0, musicMs:0, podMs:0, plays:0, artists:new Map(), tracks:new Map(), albums:new Map(), pods:new Map(),
+    hours:new Array(24).fill(0), week:new Array(7).fill(0), timeline:new Map(), days:new Map(), skipN:0, skipBase:0, shufN:0, first:null, last:null, nightMs:0};
+  for (const r of recs){
+    const d = new Date(r.t);
+    S.totalMs += r.ms;
+    S.hours[d.getHours()] += r.ms;
+    S.week[(d.getDay()+6)%7] += r.ms;
+    const tk = year==='all' ? String(d.getFullYear()) : d.getMonth();
+    S.timeline.set(tk, (S.timeline.get(tk)||0) + r.ms);
+    const dk = dayKey(d); S.days.set(dk, (S.days.get(dk)||0) + r.ms);
+    if (!S.first) S.first = r; S.last = r;
+    if (r.type==='music'){
+      S.musicMs += r.ms;
+      const counted = r.ms >= MIN_PLAY_MS;
+      if (counted) S.plays++;
+      const a = S.artists.get(r.artist) || {name:r.artist, ms:0, plays:0}; a.ms += r.ms; if (counted) a.plays++; S.artists.set(r.artist, a);
+      const k = r.track+'\u0000'+r.artist;
+      const t = S.tracks.get(k) || {name:r.track, artist:r.artist, ms:0, plays:0}; t.ms += r.ms; if (counted) t.plays++; S.tracks.set(k, t);
+      if (r.album){ const ak = r.album+'\u0000'+r.artist; const al = S.albums.get(ak) || {name:r.album, artist:r.artist, ms:0}; al.ms += r.ms; S.albums.set(ak, al); }
+      if (r.ext){ S.skipBase++; if (r.skipped) S.skipN++; if (r.shuffle) S.shufN++; }
+    } else {
+      S.podMs += r.ms;
+      const p = S.pods.get(r.show) || {name:r.show, ms:0, eps:new Set()}; p.ms += r.ms; p.eps.add(r.episode); S.pods.set(r.show, p);
+    }
+  }
+  S.topArtists = [...S.artists.values()].sort((a,b)=>b.ms-a.ms);
+  S.topTracks  = [...S.tracks.values()].filter(t=>t.plays>0).sort((a,b)=>b.plays-a.plays || b.ms-a.ms);
+  S.topAlbums  = [...S.albums.values()].sort((a,b)=>b.ms-a.ms);
+  S.topPods    = [...S.pods.values()].sort((a,b)=>b.ms-a.ms);
+  // Tage / Serien
+  const dayKeys = [...S.days.keys()].sort();
+  S.activeDays = dayKeys.length;
+  let best = null; for (const [k,v] of S.days) if (!best || v>best[1]) best = [k,v];
+  S.bestDay = best;
+  let streak=0, maxStreak=0, prev=null;
+  for (const k of dayKeys){
+    const cur = new Date(k+'T12:00:00');
+    streak = (prev && Math.round((cur-prev)/864e5)===1) ? streak+1 : 1;
+    if (streak>maxStreak) maxStreak = streak; prev = cur;
+  }
+  S.maxStreak = maxStreak;
+  S.peakHour = S.hours.indexOf(Math.max(...S.hours));
+  S.peakDay = S.week.indexOf(Math.max(...S.week));
+  S.persona = persona(S);
+  return S;
+}
+
+function persona(S){
+  const h = S.peakHour;
+  const tot = S.hours.reduce((a,b)=>a+b,0) || 1;
+  const night = (S.hours.slice(22).reduce((a,b)=>a+b,0) + S.hours.slice(0,5).reduce((a,b)=>a+b,0)) / tot;
+  const top1share = S.topArtists[0] ? S.topArtists[0].ms / (S.musicMs||1) : 0;
+  if (night > .25 || h>=22 || h<5) return {e:'🦉', t:'Nachteule', d:'Deine Musik läuft am liebsten, wenn alle anderen schlafen.'};
+  if (top1share > .2) return {e:'💘', t:'Superfan', d:'Über ein Fünftel deiner Hörzeit gehört '+S.topArtists[0].name+'. Das ist Treue.'};
+  if (S.artists.size > 800) return {e:'🧭', t:'Entdecker:in', d:'Mehr als '+fmt(S.artists.size)+' verschiedene Künstler:innen – du hörst querbeet.'};
+  if (h>=5 && h<10) return {e:'🌅', t:'Frühaufsteher:in', d:'Dein Tag startet mit Musik – die meiste Hörzeit liegt am Morgen.'};
+  if (h>=17) return {e:'🌆', t:'Feierabend-Hörer:in', d:'Wenn der Tag vorbei ist, geht bei dir die Musik an.'};
+  return {e:'🎧', t:'Dauerbeschaller:in', d:'Musik begleitet dich durch den ganzen Tag.'};
+}
+
+/* ======================= Darstellung ======================= */
+let CUR = null, STORY_BLOB = null;
+
+function showResults(){
+  const years = [...new Set(RECORDS.map(r => new Date(r.t).getFullYear()))].sort((a,b)=>b-a);
+  const sel = $('#yearSel');
+  sel.innerHTML = '<option value="all">Alle Jahre</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  sel.value = years.length>1 ? String(years[0]) : 'all';
+  $('#results').style.display = 'block';
+  render();
+  setTimeout(()=> $('#results').scrollIntoView({behavior:'smooth'}), 50);
+}
+
+function periodLabel(S){ return S.year==='all' ? 'Alle Jahre' : String(S.year); }
+
+function render(){
+  const S = CUR = analyze($('#yearSel').value);
+  $('#resTitle').textContent = 'Deine Hörzeit ' + (S.year==='all' ? '' : S.year);
+  $('#resRange').textContent = S.first ? fmtDate(new Date(S.first.t)) + ' – ' + fmtDate(new Date(S.last.t)) : '';
+  $('#persona').innerHTML = `<div class="emoji">${S.persona.e}</div><div><h3>Du bist: ${esc(S.persona.t)}</h3><p>${esc(S.persona.d)}</p></div>`;
+  const mins = S.totalMs/60000;
+  const k = [
+    [fmt(mins), 'Minuten gehört'],
+    [fmt(mins/60), 'Stunden'],
+    [fmt(S.plays), 'Songs gestreamt'],
+    [fmt(S.tracks.size), 'verschiedene Songs'],
+    [fmt(S.artists.size), 'Künstler:innen'],
+    [fmt(S.activeDays), 'Tage mit Musik'],
+  ];
+  $('#kpis').innerHTML = k.map(([v,l])=>`<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+
+  list('#topArtists', S.topArtists.slice(0,10), a => [a.name, fmt(a.plays)+' Streams'], a => hm(a.ms), a => a.ms);
+  list('#topTracks', S.topTracks.slice(0,10), t => [t.name, t.artist], t => fmt(t.plays)+'×', t => t.plays);
+  list('#topAlbums', S.topAlbums.slice(0,5), a => [a.name, a.artist], a => hm(a.ms), a => a.ms, 'Im erweiterten Verlauf enthalten – nicht in den normalen Kontodaten.');
+  list('#topPods', S.topPods.slice(0,5), p => [p.name, p.eps.size+' Folgen'], p => hm(p.ms), p => p.ms, 'Keine Podcasts in diesem Zeitraum.');
+
+  const f = [];
+  if (S.bestDay) f.push(['Dein stärkster Tag', fmtDate(new Date(S.bestDay[0]+'T12:00:00'))+' · '+hm(S.bestDay[1])]);
+  f.push(['Längste Serie', S.maxStreak+' Tage am Stück']);
+  f.push(['Lieblings-Uhrzeit', S.peakHour+':00 – '+(S.peakHour+1)+':00 Uhr']);
+  f.push(['Lieblings-Wochentag', WEEKDAYS_LONG[S.peakDay]]);
+  if (S.skipBase) f.push(['Übersprungen', Math.round(S.skipN/S.skipBase*100)+' % deiner Songs']);
+  if (S.skipBase) f.push(['Shuffle-Anteil', Math.round(S.shufN/S.skipBase*100)+' %']);
+  if (S.podMs) f.push(['Podcasts', hm(S.podMs)]);
+  if (S.activeDays) f.push(['Ø pro Musik-Tag', hm(S.totalMs/S.activeDays)]);
+  $('#facts').innerHTML = f.map(([l,v])=>`<div class="fact"><div class="l">${l}</div><div class="v">${esc(v)}</div></div>`).join('');
+
+  drawAllCharts();
+  buildStory();
+}
+
+function list(sel, items, label, value, metric, emptyMsg='Keine Daten.'){
+  const el = $(sel);
+  if (!items.length){ el.innerHTML = `<p class="hint" style="margin:0">${emptyMsg}</p>`; return; }
+  const max = metric(items[0]) || 1;
+  el.innerHTML = items.map(it => { const [a,b] = label(it); return `<li><div class="name"><b>${esc(a)}</b><small>${esc(b)}</small><div class="bar" style="width:${Math.max(4,metric(it)/max*100)}%"></div></div><div class="val">${esc(value(it))}</div></li>`; }).join('');
+}
+
+/* ----- Diagramme (Canvas – werden auch fürs PDF verwendet) ----- */
+function chartData(S){
+  const hour = {labels:[...Array(24).keys()].map(h=>String(h)), values:S.hours.map(v=>v/3.6e6)};
+  const week = {labels:WEEKDAYS, values:S.week.map(v=>v/3.6e6)};
+  let time;
+  if (S.year==='all'){ const ks=[...S.timeline.keys()].sort(); time={labels:ks, values:ks.map(k=>S.timeline.get(k)/3.6e6), title:'Nach Jahr (Std.)'}; }
+  else time = {labels:MONTHS, values:MONTHS.map((_,i)=>(S.timeline.get(i)||0)/3.6e6), title:'Nach Monat (Std.)'};
+  return {hour, week, time};
+}
+
+function drawBars(cv, labels, values, o){
+  const dpr = o.dpr || window.devicePixelRatio || 1;
+  const W = o.w || cv.clientWidth || 600, H = o.h || cv.clientHeight || 200;
+  cv.width = W*dpr; cv.height = H*dpr;
+  const c = cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0);
+  c.fillStyle = o.bg; c.fillRect(0,0,W,H);
+  const padL=34, padB=22, padT=10, padR=6;
+  const max = Math.max(...values, .0001);
+  const nice = niceMax(max);
+  c.font = '11px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.textBaseline='middle'; c.textAlign='right';
+  for (let i=0;i<=5;i++){
+    const y = padT + (H-padT-padB)*(1-i/5);
+    c.strokeStyle=o.grid; c.lineWidth=1; c.beginPath(); c.moveTo(padL,y); c.lineTo(W-padR,y); c.stroke();
+    c.fillStyle=o.muted; c.fillText(fmtAxis(nice*i/5), padL-6, y);
+  }
+  const n = values.length, slot = (W-padL-padR)/n, bw = Math.max(2, slot*0.68);
+  const maxIdx = values.indexOf(Math.max(...values));
+  const step = n>16 ? 3 : 1;
+  values.forEach((v,i)=>{
+    const h = (H-padT-padB) * (v/nice);
+    const x = padL + slot*i + (slot-bw)/2, y = H-padB-h;
+    c.fillStyle = i===maxIdx ? o.accent2 : o.accent;
+    roundRect(c, x, y, bw, h, Math.min(4,bw/2)); c.fill();
+    if (i%step===0){ c.fillStyle=o.muted; c.textAlign='center'; c.fillText(labels[i], x+bw/2, H-padB/2+2); }
+  });
+}
+function niceMax(m){ const p = Math.pow(10, Math.floor(Math.log10(m))); const r = m/p; return (r<=1?1:r<=2?2:r<=5?5:10)*p; }
+function fmtAxis(v){ return Number.isInteger(+v.toFixed(6)) ? fmt(v) : String(+v.toFixed(2)).replace('.',','); }
+function roundRect(c,x,y,w,h,r){ if (h<=0){ c.beginPath(); return; } r=Math.min(r,h); c.beginPath(); c.moveTo(x,y+h); c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y); c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r); c.lineTo(x+w,y+h); c.closePath(); }
+
+function screenTheme(){ return {bg:cssVar('--surface'), grid:cssVar('--line'), muted:cssVar('--muted'), accent:cssVar('--accent'), accent2:cssVar('--accent-2')}; }
+function drawAllCharts(){
+  if (!CUR) return;
+  const d = chartData(CUR), t = screenTheme();
+  $('#chTimeTitle').textContent = d.time.title;
+  drawBars($('#chHour'), d.hour.labels, d.hour.values, t);
+  drawBars($('#chWeek'), d.week.labels, d.week.values, t);
+  drawBars($('#chTime'), d.time.labels, d.time.values, t);
+}
+window.addEventListener('resize', ()=>{ clearTimeout(window.__rz); window.__rz=setTimeout(drawAllCharts,150); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', drawAllCharts);
+
+/* ======================= Instagram-Story-Bild ======================= */
+async function buildStory(){
+  await (document.fonts ? document.fonts.ready : Promise.resolve());
+  const S = CUR, W=1080, H=1920;
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const c = cv.getContext('2d');
+  // Hintergrund
+  const g = c.createLinearGradient(0,0,W,H); g.addColorStop(0,'#1a1033'); g.addColorStop(.55,'#2a1050'); g.addColorStop(1,'#14111f');
+  c.fillStyle=g; c.fillRect(0,0,W,H);
+  blob(c, 900, 260, 420, 'rgba(255,92,122,.45)');
+  blob(c, 120, 1500, 520, 'rgba(124,77,255,.45)');
+  blob(c, 1000, 1750, 300, 'rgba(255,170,90,.25)');
+
+  const PAD = 90; let y = 240;
+  c.fillStyle='rgba(255,255,255,.7)'; c.font='600 34px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.textBaseline='alphabetic';
+  c.fillText('MEINE HÖRZEIT '+(S.year==='all'?'':S.year), PAD, y);
+  y += 190;
+  c.fillStyle='#fff'; c.font='700 200px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+  c.fillText(fmt(S.totalMs/60000), PAD, y);
+  y += 70; c.font='500 46px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.fillStyle='rgba(255,255,255,.85)';
+  c.fillText('Minuten Musik & Podcasts', PAD, y);
+
+  // Persona
+  y += 80;
+  c.fillStyle='rgba(255,255,255,.12)'; roundRect2(c, PAD, y, W-2*PAD, 120, 30); c.fill();
+  c.font='64px serif'; c.fillText(S.persona.e, PAD+30, y+84);
+  c.fillStyle='#fff'; c.font='700 48px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+  c.fillText(fit(c, S.persona.t, W-2*PAD-160), PAD+130, y+78);
+
+  // Top-Künstler
+  y += 200;
+  section(c, 'Top-Künstler:innen', PAD, y); y += 30;
+  S.topArtists.slice(0,5).forEach((a,i)=>{ y += 74; row(c, i+1, a.name, null, PAD, y, W-2*PAD); });
+  // Top-Songs
+  y += 100;
+  section(c, 'Top-Songs', PAD, y); y += 30;
+  S.topTracks.slice(0,5).forEach((t,i)=>{ y += 90; row(c, i+1, t.name, t.artist, PAD, y-14, W-2*PAD); });
+
+  // Footer
+  c.fillStyle='rgba(255,255,255,.6)'; c.font='500 32px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.textAlign='center';
+  c.fillText(SITE_URL, W/2, H-70);
+  c.textAlign='left';
+
+  const blobOut = await new Promise(r => cv.toBlob(r, 'image/png'));
+  STORY_BLOB = blobOut;
+  $('#storyPrev').src = URL.createObjectURL(blobOut);
+}
+function blob(c,x,y,r,col){ const g=c.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,col); g.addColorStop(1,'rgba(0,0,0,0)'); c.fillStyle=g; c.fillRect(x-r,y-r,2*r,2*r); }
+function roundRect2(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function fit(c, s, max){ s=String(s); if (c.measureText(s).width<=max) return s; while (s.length>1 && c.measureText(s+'…').width>max) s=s.slice(0,-1); return s+'…'; }
+function section(c, t, x, y){ c.fillStyle='#ff8aa0'; c.font='700 30px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.fillText(t.toUpperCase(), x, y); }
+function row(c, n, a, b, x, y, w){
+  c.fillStyle='rgba(255,255,255,.55)'; c.font='700 44px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.fillText(String(n), x, y);
+  c.fillStyle='#fff'; c.font='600 46px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.fillText(fit(c, a, w-80), x+70, y);
+  if (b){ c.fillStyle='rgba(255,255,255,.6)'; c.font='400 32px system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'; c.fillText(fit(c, b, w-80), x+70, y+42); }
+}
+
+function download(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); }
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+
+async function shareStory(){
+  if (!STORY_BLOB) return;
+  const file = new File([STORY_BLOB], 'hoerzeit-story.png', {type:'image/png'});
+  if (navigator.canShare && navigator.canShare({files:[file]})){
+    try { await navigator.share({files:[file]}); $('#shareHint').textContent = 'Wähle im Teilen-Menü „Instagram“ → „Story“.'; return; }
+    catch(e){ if (e.name==='AbortError') return; }
+  }
+  download(STORY_BLOB, 'hoerzeit-story.png');
+  if (isMobile){
+    $('#shareHint').innerHTML = 'Bild gespeichert. <a href="instagram://story-camera">Instagram Story öffnen</a> und das Bild aus deiner Galerie wählen.';
+  } else {
+    $('#shareHint').textContent = 'Bild gespeichert. Am einfachsten öffnest du diese Seite auf dem Handy – dort geht das Teilen in die Story direkt mit einem Tipp.';
+  }
+}
+
+/* ======================= PDF-Export ======================= */
+function pdfSafe(s){ return String(s ?? '').replace(/[^\x20-\x7E -ÿ–—‘’“”…€]/g,'?'); }
+
+async function exportPdf(){
+  if (!window.jspdf){ alert('Das PDF-Modul konnte nicht geladen werden. Bitte Internetverbindung prüfen.'); return; }
+  overlay(true, 'Erstelle PDF …');
+  await new Promise(r=>setTimeout(r,30));
+  try {
+    const S = CUR, { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:'a4'});
+    const PW=210, PH=297, M=16, CW=PW-2*M; let y=M;
+    const ACC=[75,63,209], ACC2=[255,92,122], TXT=[27,23,38], MUT=[101,95,120], LINE=[226,221,239];
+    const need = h => { if (y+h > PH-M){ doc.addPage(); y=M; } };
+    const T = (s, x, yy, o) => doc.text(pdfSafe(s), x, yy, o);
+    const cut = (s, w) => { s = pdfSafe(s); if (doc.getTextWidth(s)<=w) return s; while (s.length>1 && doc.getTextWidth(s+'...')>w) s=s.slice(0,-1); return s+'...'; };
+
+    // Kopf
+    doc.setFillColor(...ACC); doc.rect(0,0,PW,4,'F');
+    doc.setFillColor(...ACC2); doc.rect(PW/2,0,PW/2,4,'F');
+    y = 20;
+    doc.setFont('helvetica','bold'); doc.setFontSize(24); doc.setTextColor(...TXT);
+    T('Meine Hörzeit ' + (S.year==='all' ? '– alle Jahre' : S.year), M, y);
+    y += 7; doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...MUT);
+    T((S.first? fmtDate(new Date(S.first.t))+' – '+fmtDate(new Date(S.last.t)) : '') + '  ·  erstellt am ' + fmtDate(new Date()), M, y);
+
+    // Persona
+    y += 8; doc.setFillColor(245,241,255); doc.roundedRect(M, y, CW, 16, 3, 3, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...ACC); T('Du bist: '+S.persona.t, M+5, y+7);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...MUT); T(cut(S.persona.d, CW-10), M+5, y+12.5);
+    y += 24;
+
+    // Kennzahlen
+    const k = [[fmt(S.totalMs/60000),'Minuten'],[fmt(S.totalMs/3.6e6),'Stunden'],[fmt(S.plays),'Streams'],[fmt(S.tracks.size),'Songs'],[fmt(S.artists.size),'Künstler:innen'],[fmt(S.activeDays),'Tage mit Musik']];
+    const kw = (CW-5*3)/6;
+    k.forEach(([v,l],i)=>{ const x=M+i*(kw+3); doc.setDrawColor(...LINE); doc.roundedRect(x,y,kw,17,2,2,'S');
+      doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...TXT); T(v, x+3, y+8);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...MUT); T(l, x+3, y+13.5); });
+    y += 26;
+
+    // Top-Listen nebeneinander
+    const colW = (CW-8)/2;
+    const table = (title, rows, x, y0) => {
+      let yy = y0; doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(...TXT); T(title, x, yy); yy += 6;
+      rows.forEach((r,i)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(...ACC); T(String(i+1), x+4, yy, {align:'right'});
+        doc.setTextColor(...TXT); doc.setFont('helvetica','bold'); T(cut(r[0], colW-34), x+7, yy);
+        doc.setFont('helvetica','normal'); doc.setTextColor(...MUT); doc.setFontSize(8.5); T(r[2], x+colW, yy, {align:'right'});
+        if (r[1]){ T(cut(r[1], colW-34), x+7, yy+4); }
+        yy += r[1] ? 9 : 6.5; doc.setDrawColor(...LINE); doc.line(x, yy-3.2, x+colW, yy-3.2); });
+      return yy;
+    };
+    need(100);
+    const y1 = table('Top 10 Künstler:innen', S.topArtists.slice(0,10).map(a=>[a.name, fmt(a.plays)+' Streams', hm(a.ms)]), M, y);
+    const y2 = table('Top 10 Songs', S.topTracks.slice(0,10).map(t=>[t.name, t.artist, fmt(t.plays)+'x']), M+colW+8, y);
+    y = Math.max(y1,y2) + 6;
+
+    // Diagramme
+    const d = chartData(S), th = {bg:'#ffffff', grid:'#e2ddef', muted:'#655f78', accent:'#4B3FD1', accent2:'#ff5c7a', dpr:3};
+    const chartImg = (data, w, h) => { const cv=document.createElement('canvas'); drawBars(cv, data.labels, data.values, {...th, w, h}); return cv.toDataURL('image/png'); };
+    const addChart = (title, data, x, w, h) => { doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(...TXT); T(title, x, y);
+      doc.addImage(chartImg(data, w*3.78, h*3.78), 'PNG', x, y+3, w, h); };
+    need(56); addChart('Hörzeit nach Uhrzeit (Stunden)', d.hour, M, CW, 45); y += 54;
+    need(56); addChart('Nach Wochentag', d.week, M, colW, 42); addChart(d.time.title, d.time, M+colW+8, colW, 42); y += 52;
+
+    // Alben & Podcasts
+    if (S.topAlbums.length || S.topPods.length){
+      need(60);
+      const ya = S.topAlbums.length ? table('Top-Alben', S.topAlbums.slice(0,5).map(a=>[a.name, a.artist, hm(a.ms)]), M, y) : y;
+      const yp = S.topPods.length ? table('Top-Podcasts', S.topPods.slice(0,5).map(p=>[p.name, p.eps.size+' Folgen', hm(p.ms)]), M+colW+8, y) : y;
+      y = Math.max(ya,yp) + 6;
+    }
+
+    // Fun Facts
+    const facts = [];
+    if (S.bestDay) facts.push(['Stärkster Tag', fmtDate(new Date(S.bestDay[0]+'T12:00:00'))+' ('+hm(S.bestDay[1])+')']);
+    facts.push(['Längste Serie', S.maxStreak+' Tage am Stück']);
+    facts.push(['Lieblings-Uhrzeit', S.peakHour+':00–'+(S.peakHour+1)+':00 Uhr']);
+    facts.push(['Lieblings-Wochentag', WEEKDAYS_LONG[S.peakDay]]);
+    if (S.skipBase) facts.push(['Übersprungen', Math.round(S.skipN/S.skipBase*100)+' % der Songs']);
+    if (S.skipBase) facts.push(['Shuffle-Anteil', Math.round(S.shufN/S.skipBase*100)+' %']);
+    if (S.podMs) facts.push(['Podcasts', hm(S.podMs)]);
+    need(10 + Math.ceil(facts.length/2)*7);
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(...TXT); T('Fun Facts', M, y); y += 6;
+    facts.forEach((f,i)=>{ const x = M + (i%2)*(colW+8); doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...MUT); T(f[0], x, y);
+      doc.setFont('helvetica','bold'); doc.setTextColor(...TXT); T(f[1], x+32, y); if (i%2===1) y += 6.5; });
+    if (facts.length%2) y += 6.5;
+
+    // Fußzeile auf jeder Seite
+    const pages = doc.getNumberOfPages();
+    for (let p=1;p<=pages;p++){ doc.setPage(p); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(...MUT);
+      T('Meine Hörzeit · '+SITE_URL+' · Nicht mit Spotify AB verbunden.', M, PH-8); T(p+'/'+pages, PW-M, PH-8, {align:'right'}); }
+
+    doc.save('hoerzeit-'+(S.year==='all'?'gesamt':S.year)+'.pdf');
+  } catch(e){ console.error(e); alert('PDF konnte nicht erstellt werden: '+e.message); }
+  finally { overlay(false); }
+}
+
+/* ======================= Beispieldaten ======================= */
+function demoData(){
+  let seed = 7; const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  const artists = ['Neon Harbor','Lena Kraft','The Midnight Ferries','Juno & die Zugvögel','Kiezkind','Velvet Static','Mara Sol','Paper Lanterns','Ostwind','Bonsai Club','Lucid Atlas','Fräulein Echo','Coastline Kids','Moritz Blau','Saffron Skies','Glasshouse','Nordlicht','Aurelia Moon','Tape Deck Heroes','Kleiner Riese'];
+  const words = ['Sommer','Nachtfahrt','Golden','Neonlicht','Ufer','Lieblingsmensch','Satellite','Paper Planes','Funken','Ozean','Heimweg','Wildfire','Spree','Stardust','Echo','Gravity','Mitternacht','Sunday','Fernweh','Kaleidoskop'];
+  const songs = artists.map((a,i) => Array.from({length:6}, (_,j) => ({artist:a, track:words[(i*3+j*7)%words.length]+(j%3===2?' (Live)':''), album:'Album '+(1+j%2)+' – '+a})));
+  const out = []; const start = Date.UTC(2025,0,1), end = Date.UTC(2026,9,30);
+  for (let n=0;n<9000;n++){
+    const ai = Math.floor(Math.pow(rnd(),2.2)*artists.length), s = songs[ai][Math.floor(Math.pow(rnd(),1.6)*6)];
+    let t = start + rnd()*(end-start); const d = new Date(t); const hr = [7,8,8,9,12,13,17,18,18,19,20,21,21,22,22,23,0,1][Math.floor(rnd()*18)];
+    d.setHours(hr, Math.floor(rnd()*60)); t = d.getTime();
+    const skipped = rnd()<.18;
+    out.push({ts:new Date(t).toISOString(), ms_played: skipped? Math.floor(rnd()*25000): 150000+Math.floor(rnd()*90000), master_metadata_track_name:s.track, master_metadata_album_artist_name:s.artist, master_metadata_album_album_name:s.album, skipped, shuffle:rnd()<.4, reason_end: skipped?'fwdbtn':'trackdone'});
+  }
+  for (let n=0;n<300;n++){ const t = start + rnd()*(end-start); out.push({ts:new Date(t).toISOString(), ms_played:600000+Math.floor(rnd()*1800000), master_metadata_track_name:null, episode_name:'Folge '+(n+1), episode_show_name:['Morgenkaffee','Tech am Abend','Laufpodcast'][n%3]}); }
+  return out;
+}
+
+/* ======================= Events ======================= */
+const drop = $('#drop');
+$('#file').addEventListener('change', e => handleFiles(e.target.files));
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+$('#demo').addEventListener('click', e => { e.preventDefault(); RECORDS = demoData().map(normalize).filter(Boolean).sort((a,b)=>a.t-b.t); setStatus('Beispieldaten geladen – so sieht deine Auswertung später aus.', 'ok'); showResults(); });
+$('#yearSel').addEventListener('change', render);
+$('#btnStory').addEventListener('click', shareStory);
+$('#btnImg').addEventListener('click', () => STORY_BLOB && download(STORY_BLOB, 'hoerzeit-story.png'));
+$('#btnPdf').addEventListener('click', exportPdf);
+</script>
+</body>
+</html>
