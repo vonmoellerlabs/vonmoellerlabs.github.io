@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>Screenshots</title>
+<p>Bilder werden übertragen …</p>
+<script>
+(async () => {
+  const names = ['1-heute','2-aufgaben','3-einkauf','4-geld','5-wg'];
+  const files = [];
+  for (const n of names) {
+    const b = await (await fetch(n + '.png', { cache: 'no-store' })).blob();
+    files.push({ name: n + '.png', buf: await b.arrayBuffer() });
+  }
+  if (window.opener) window.opener.postMessage({ type: 'zusammen-shots', files }, 'https://appstoreconnect.apple.com');
+  document.body.textContent = 'Fertig – dieses Fenster kann geschlossen werden.';
+})();
+</script>
