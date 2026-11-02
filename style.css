@@ -33,3 +33,4 @@ footer{display:flex;gap:20px;padding-top:20px;padding-bottom:40px;border-top:1px
 .btn{justify-self:start;margin-top:8px;background:var(--accent);color:#fff;text-decoration:none;font-weight:600;font-size:.95rem;padding:9px 16px;border-radius:999px}
 .btn:hover{filter:brightness(1.08)}
 @media (prefers-color-scheme: dark){.btn{color:#101120}}
+.apps .soon{justify-self:start;margin-top:8px;font-size:.85rem;font-weight:600;color:var(--fg);background:var(--bg);border:1px dashed var(--line);padding:6px 12px;border-radius:999px}
