@@ -8,7 +8,8 @@
     const b = await (await fetch(n + '.png', { cache: 'no-store' })).blob();
     files.push({ name: n + '.png', buf: await b.arrayBuffer() });
   }
-  if (window.opener) window.opener.postMessage({ type: 'zusammen-shots', files }, 'https://appstoreconnect.apple.com');
+  const target = window.opener || (window.parent !== window ? window.parent : null);
+  if (target) target.postMessage({ type: 'zusammen-shots', files }, 'https://appstoreconnect.apple.com');
   document.body.textContent = 'Fertig – dieses Fenster kann geschlossen werden.';
 })();
 </script>
